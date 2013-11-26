@@ -52,11 +52,17 @@ private:
 	std::map<int,cv::Mat> templates_;
 	//a relationship between blob IDs and their centroids
 	std::map<int,cv::Point2f> centroids_;
+	//a relation between blob IDs and their first-seen bounding boxes
+	std::map<int,cv::Rect> initial_bounds_;
+	//a relation between blob IDs and points on the template_ used for warpAffine
+	Point2fVecMap src_points_;
 };
 
 int main(int argc, char* argv[]) {
 	//connect to ros
 	ros::init(argc, argv, "segmentation");
+	//set logger level
+	utility::setLoggerDebug();
 	ros::NodeHandle handle("~");
 
 	BagOnPersonProcessor processor("blobs_in","events_out");
@@ -99,7 +105,6 @@ void BagOnPersonProcessor::callback(const ros::TimerEvent& event) {
 		ContourList temp_list;
 		temp_list.push_back(input_stream_.data_[cursor]->contour_);
 		cv::drawContours(blob_visual,temp_list,0,cv::Scalar(255),-1);
-		imshow("redrawn contour",blob_visual);
 
 
 		//compute the body axis
@@ -112,7 +117,6 @@ void BagOnPersonProcessor::callback(const ros::TimerEvent& event) {
 		//option 2: try computing it as the horizontal projection(as in sum of vertical stacks of pixels)
 		  std::vector<int> upward_projection;
 		utility::getUpwardProjection(blob_visual,&upward_projection);
-		std::cout<<"upward projection of "<<cursor<<std::endl;
 		int max=0;
 		int max_at=0;
 		for(int i=0;i<upward_projection.size();i++) {
@@ -120,7 +124,6 @@ void BagOnPersonProcessor::callback(const ros::TimerEvent& event) {
 				max = upward_projection[i];
 				max_at=i;
 			}
-			std::cout<<upward_projection[i]<<" ";
 		}
 		std::cout<<std::endl;
 		//option 3: calculate the median line
@@ -154,31 +157,77 @@ void BagOnPersonProcessor::callback(const ros::TimerEvent& event) {
 			templates_.insert(std::pair<int,cv::Mat>(cursor,blob_visual));
 
 			centroids_.insert(std::pair<int,cv::Point2f>(cursor,input_stream_.data_[cursor]->getCentroid() ));
-
 			//store a maximum similarity of 1
 			similarities_.insert(std::pair<int,std::vector<double> >( cursor , std::vector<double>(1,1.0) ));
+
+			//store the bound
+			initial_bounds_.insert(std::pair<int,cv::Rect>(cursor,input_stream_.data_[cursor]->LastRawBound()));
+
+			Point2fVec src_points;
+			src_points.push_back(centroids_.at(cursor));
+			src_points.push_back(input_stream_.data_[cursor]->LastRawBound().tl());
+			src_points.push_back(utility::BottomLeft(input_stream_.data_[cursor]->LastRawBound()));
+
+			src_points_.insert(std::pair<int,std::vector<cv::Point2f> >(cursor, src_points));
+
+		} else if(utility::changedMoreThanFactor( //the bound has changed a lot since first view, so reset all the periodicity tracking stuff
+				initial_bounds_.find(cursor)->second,
+				input_stream_.data_[cursor]->LastRawBound(), 1)) {
+			ROS_INFO_STREAM("Blob "<<cursor<<" has changed size dramatically, periodicity analysis is resetting. Originial: "
+					<<initial_bounds_.find(cursor)->second
+					<<" new: "<<input_stream_.data_[cursor]->LastRawBound());
+			//reset the template
+			templates_.find(cursor)->second = blob_visual;
+
+			//reset the centroid
+			centroids_.find(cursor)->second = input_stream_.data_[cursor]->getCentroid();
+
+			//clear the similarities and insert a 1 (for the first frame having maximum similarity)
+			std::map<int,std::vector<double> >::iterator similarities_it = similarities_.find(cursor);
+			similarities_it->second.clear();
+			similarities_it->second.push_back(1);
+
+			//reset initial bound
+			initial_bounds_.find(cursor)->second = input_stream_.data_[cursor]->LastRawBound();
+
+			//reset src points
+			Point2fVec src_points;
+			src_points.push_back(centroids_.at(cursor));
+			src_points.push_back(input_stream_.data_[cursor]->LastRawBound().tl());
+			src_points.push_back(utility::BottomLeft(input_stream_.data_[cursor]->LastRawBound()));
+
+			Point2fVecMapIt src_points_it = src_points_.find(cursor);
+
+			src_points_it->second.swap(src_points);
+
 		} else {
+			ROS_DEBUG_STREAM("Blob "<<cursor<<" didn't change significantly Originial: "
+								<<initial_bounds_.find(cursor)->second
+								<<" new: "<<input_stream_.data_[cursor]->LastRawBound());
 			//the blob already exists, so update it by computing the similarity
 			//scale and align the blob using affine transformation
 			//we already have centers, so just need two more points. The corners would be good
-			cv::Point2f src_points[3];
-			cv::Point2f dst_points[3];
+			Point2fVec dst_points;
 
-			src_points[0] = centroids_.at(cursor);
-			dst_points[0] = input_stream_.data_[cursor]->getCentroid();
+			dst_points.push_back(input_stream_.data_[cursor]->getCentroid());
 
-			src_points[1] = input_stream_.data_[cursor]->getBound(0).tl();
-			dst_points[1] = input_stream_.data_[cursor]->LastRawBound().tl();
+			dst_points.push_back(input_stream_.data_[cursor]->LastRawBound().tl());
+			dst_points.push_back(utility::BottomLeft(input_stream_.data_[cursor]->LastRawBound()));
 
-			src_points[1] = input_stream_.data_[cursor]->getBound(0).br();
-			dst_points[1] = input_stream_.data_[cursor]->LastRawBound().br();
+			cv::Mat warp_mat = cv::getAffineTransform(dst_points,src_points_.at(cursor));
 
-			cv::Mat warp_mat = cv::getAffineTransform(src_points,dst_points);
 
 			cv::Mat warped_blob;
 			cv::warpAffine(blob_visual,warped_blob,warp_mat,blob_visual.size());
-			imshow("current blob before",blob_visual);
-			imshow("first blob",templates_.at(cursor));
+			//draw the points on the warp_mat for testing/visualization
+			ROS_DEBUG_STREAM("affine warp src 0: "<<src_points_[cursor][0]);
+			ROS_DEBUG_STREAM("affine warp src 1: "<<src_points_[cursor][1]);
+			ROS_DEBUG_STREAM("affine warp src 2: "<<src_points_[cursor][2]);
+
+			ROS_DEBUG_STREAM("affine warp dst 0: "<<dst_points[0]);
+			ROS_DEBUG_STREAM("affine warp dst 1: "<<dst_points[1]);
+			ROS_DEBUG_STREAM("affine warp dst 2: "<<dst_points[2]);
+
 			imshow("current blob warped",warped_blob);
 
 

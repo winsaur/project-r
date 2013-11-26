@@ -31,9 +31,13 @@ void CombineContours(const cv::Size& mat_size,ContourList* contours);
 cv::Rect UpperHalf(const cv::Rect& bound);
 cv::Rect LowerHalf(const cv::Rect& bound);
 cv::Point Center(const cv::Rect& bound);
+cv::Point BottomLeft(const cv::Rect& bound);
 cv::Scalar At(const cv::Mat frame, const cv::Point location);
+void setLoggerDebug();
 //contours is not const because upon returning, it+candidates == input contours
 void getCandidates(const cv::Rect& bound, ContourList& contours, ContourList* candidates);
+//checks if a rect has grown or shrank more than factor
+bool changedMoreThanFactor(const cv::Rect& first, const cv::Rect& second, double factor);
 //cannot be const because it returns a non-const iterator
 //but this function does not modify the ContourList
 ContourListIt findLargestContour(ContourList& contours);

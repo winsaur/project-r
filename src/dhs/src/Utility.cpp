@@ -17,6 +17,9 @@
  */
 #include "Utility.h"
 
+#include <ros/ros.h>
+#include <cmath>
+
 static const int kMaxCombineTimes = 10;
 static const int NO_MEDIAN(-1);
 static const int kSymmetryTolerance(0);
@@ -108,6 +111,10 @@ cv::Point Center(const cv::Rect& bound) {
 	assert(bound.width > 0 && bound.height > 0 && bound.x >= 0 && bound.y >= 0);
 	return cv::Point(bound.x+bound.width/2,bound.y+bound.height/2);
 }
+cv::Point BottomLeft(const cv::Rect& bound) {
+	assert(bound.width > 0 && bound.height > 0 && bound.x >= 0 && bound.y >= 0);
+	return cv::Point(bound.x,bound.y+bound.height);
+}
 cv::Scalar At(const cv::Mat frame, const cv::Point location) {
 	//TODO: remove Vec3b assumption
 	cv::Scalar out;
@@ -116,6 +123,12 @@ cv::Scalar At(const cv::Mat frame, const cv::Point location) {
 	out[2] = frame.at<cv::Vec3b>(location)[2];
 
 	return out;
+}
+void setLoggerDebug() {
+	log4cxx::LoggerPtr my_logger =
+	           log4cxx::Logger::getLogger(ROSCONSOLE_DEFAULT_NAME);
+	my_logger->setLevel(
+	           ros::console::g_level_lookup[ros::console::levels::Debug]);
 }
 void getCandidates(const cv::Rect& blob_bound, ContourList& contours, ContourList* candidates) {
 	ContourListConstIt contour_cursor = contours.begin();
@@ -131,6 +144,26 @@ void getCandidates(const cv::Rect& blob_bound, ContourList& contours, ContourLis
 		}
 	}
 	contours.swap(list_to_replace_contours_with);
+}
+bool changedMoreThanFactor(const cv::Rect& first, const cv::Rect& second, double factor) {
+	double first_aspect_ratio = ((double)first.width)/first.height;
+	double second_aspect_ratio = ((double)second.width)/second.height;
+	//ROS_DEBUG_STREAM("first aspect ratio: "<<first_aspect_ratio<<" second: "<<second_aspect_ratio);
+	//ROS_DEBUG_STREAM("first check: "<<std::abs(first_aspect_ratio-second_aspect_ratio)/first_aspect_ratio<<" > "<<factor);
+	//ROS_DEBUG_STREAM("second check: "<<std::abs(first_aspect_ratio-second_aspect_ratio)/second_aspect_ratio<<" > "<<factor);
+
+	//check if aspect ratio changed dramatically
+	if(std::abs(first_aspect_ratio-second_aspect_ratio)/first_aspect_ratio > factor) return true;
+	if(std::abs(first_aspect_ratio-second_aspect_ratio)/second_aspect_ratio > factor) return true;
+
+	//check if height changed dramatically
+	if(abs(first.height-second.height) > first.height) return true;
+	if(abs(first.height-second.height) > second.height) return true;
+
+
+
+	return false;
+
 }
 ContourListIt findLargestContour(ContourList& contours) {
 	int max_area=0;

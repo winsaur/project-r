@@ -1,7 +1,8 @@
 	<launch>
 		<include file="$(find dhs)/../../rgb_segmentation.launch"/>
 		
-	<node pkg="dhs" type="blob_descriptor" name="blob_descriptor" output="screen" launch-prefix="xterm -e gdb --args">
+	<!-- node pkg="dhs" type="blob_descriptor" name="blob_descriptor" output="screen" launch-prefix="xterm -e gdb -args" -->
+	<node pkg="dhs" type="blob_descriptor" name="blob_descriptor" output="screen">
 		<remap from="segmentation_in" to="/camera/rgb/segmentation" />
 		<remap from="rgb_in" to="/camera/rgb/gaussian_filtered" />
 		<remap from="depth_in" to="/camera/depth_registered/image_raw" />			

@@ -43,5 +43,10 @@ typedef std::vector<BlobDescriptorPtr> BlobDescriptorPtrVector;
 typedef BlobDescriptorPtrVector::iterator BlobDescriptorPtrVectorIt;
 typedef BlobDescriptorPtrVector::const_iterator BlobDescriptorPtrVectorConstIt;
 
+typedef std::vector<cv::Point2f> Point2fVec;
+typedef std::map<int,Point2fVec> Point2fVecMap;
+typedef std::pair<int,Point2fVec > Point2fVecPair;
+typedef Point2fVecMap::iterator Point2fVecMapIt;
+
 
 #endif /* TYPES_H_ */
