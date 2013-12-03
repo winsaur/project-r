@@ -20,14 +20,20 @@
 #include "Utility.h"
 #include "Types.h"
 
+static const int kMinContourArea(100);
+
+bool isContourSmall(const Contour& rhs) {
+	return cv::contourArea(rhs) < kMinContourArea;
+}
+
 void BlobDescriptorExtended::setupPeriodic(const cv::Mat& template_view) {
 	//store its template
 	template_view_ = template_view;
 	//store maximum similarity
 	backpack_similarities_.clear();
-	backpack_similarities_.push_back(1.);
+	backpack_similarities_.push_back(0);
 	briefcase_similarities_.clear();
-	briefcase_similarities_.push_back(1.);
+	briefcase_similarities_.push_back(0);
 
 	//store its current location
 	initial_bound_ = LastRawBound();
@@ -49,17 +55,89 @@ void BlobDescriptorExtended::addFrame(const cv::Mat& frame) {
 							 initial_bound_.width,
 							 initial_bound_.height*0.4);
 	cv::Mat backpack_candidate(warped_blob_cropped,backpack_region);
+	cv::Mat backpack_template(template_view_,backpack_region);
 
-	cv::Rect breifcase_region(0,
+	cv::Rect briefcase_region(0,
 							 initial_bound_.height*0.5,
 							 initial_bound_.width,
 							 initial_bound_.height*0.5);
-	cv::Mat briefcase_candidate(warped_blob_cropped,breifcase_region);
+	cv::Mat briefcase_candidate(warped_blob_cropped,briefcase_region);
+	cv::Mat briefcase_template(template_view_,briefcase_region);
 
-	imshow("2backpack candidate",backpack_candidate);
-	imshow("3briefcase candidate",briefcase_candidate);
 
-	//get contours in backpack and briefcase regions
+/*	//get contours in backpack and briefcase regions
+	ContourList backpack_regions,briecase_regions;
+	cv::findContours(backpack_candidate,backpack_regions,cv::RETR_EXTERNAL,cv::CHAIN_APPROX_NONE);
+	cv::findContours(briefcase_candidate,briecase_regions,cv::RETR_EXTERNAL,cv::CHAIN_APPROX_NONE);
+
+	//remove small contours
+	backpack_regions.erase(std::remove_if(backpack_regions.begin(),backpack_regions.end(),isContourSmall),
+			backpack_regions.end());
+	briecase_regions.erase(std::remove_if(briecase_regions.begin(),briecase_regions.end(),isContourSmall),
+			briecase_regions.end());
+*/
+	//compute similarity of backpack and briefcase regions
+
+	cv::Mat backpack_difference = backpack_candidate-backpack_template | backpack_template-backpack_candidate;
+	cv::Mat briefcase_difference = briefcase_candidate-briefcase_template | briefcase_template-briefcase_candidate;
+
+	//count the nonblack pixels in the result
+	int backpack_nonzero = cv::countNonZero(backpack_difference)+1;
+	int briefcase_nonzero = cv::countNonZero(briefcase_difference)+1;
+	backpack_similarities_.push_back((double)1./backpack_nonzero);
+	briefcase_similarities_.push_back((double)1./briefcase_nonzero);
+
+	utility::visualizeVector("backpack_similarities",backpack_similarities_);
+	utility::visualizeVector("briefcase_similarities_",briefcase_similarities_);
+
+	cv::Mat backpack_similarities_mat(1,backpack_similarities_.size(),CV_32FC2,cv::Scalar::all(0));
+	cv::Mat briefcase_similarities_mat(1,briefcase_similarities_.size(),CV_32FC2,cv::Scalar::all(0));
+
+	//copy the data to the mat
+	for(int i=0;i<backpack_similarities_.size();i++) {
+		backpack_similarities_mat.at<cv::Vec2f>(0,i)[0] = (float)backpack_similarities_[i];
+		briefcase_similarities_mat.at<cv::Vec2f>(0,i)[0] = (float)briefcase_similarities_[i];
+	}
+	cv::dft(backpack_similarities_mat,backpack_similarities_mat);
+	cv::dft(briefcase_similarities_mat,briefcase_similarities_mat);
+
+	//center data
+	int center = backpack_similarities_mat.cols;
+	std::cout<<"center: "<<center<<std::endl;
+	cv::Mat left(backpack_similarities_mat,cv::Rect(0,0,center/2,1));
+	cv::Mat right(backpack_similarities_mat,cv::Rect(center/2,0,center/2-1,1));
+	cv::Mat temp;
+	right.copyTo(temp);
+	left.copyTo(right);
+	temp.copyTo(left);
+
+	cv::Mat left2(briefcase_similarities_mat,cv::Rect(0,0,center/2,1));
+	cv::Mat right2(briefcase_similarities_mat,cv::Rect(center/2,0,center/2-1,1));
+	right2.copyTo(temp);
+	left2.copyTo(right2);
+	temp.copyTo(left2);
+
+	std::cout<<"backpack similarities fourier: "<<backpack_similarities_mat<<std::endl;
+	std::cout<<"briefcase similarities fourier: "<<briefcase_similarities_mat<<std::endl;
+
+
+	//calculate magnitude of both FT's
+	std::vector<float> backpack_magnitude,briefcase_magnitude;
+	for(int i=0;i<backpack_similarities_.size();i++) {
+		backpack_magnitude.push_back(
+				pow(backpack_similarities_mat.at<cv::Vec2f>(0,i)[0],2) +
+				pow(backpack_similarities_mat.at<cv::Vec2f>(0,i)[1],2));
+		briefcase_magnitude.push_back(
+						pow(briefcase_similarities_mat.at<cv::Vec2f>(0,i)[0],2) +
+						pow(briefcase_similarities_mat.at<cv::Vec2f>(0,i)[1],2));
+
+
+	}
+
+
+
+	utility::visualizeVector("breifcase fourier",briefcase_magnitude);
+	utility::visualizeVector("backpack fourier",backpack_magnitude);
 
 }
 

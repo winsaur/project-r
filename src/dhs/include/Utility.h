@@ -57,9 +57,10 @@ void floodConcaveRegions(cv::Mat* image);
 void recolorNonSymmetricRegions(int symmetry_axis,cv::Mat* image);
 void removeSymmetricRegions(int symmetry_axis,cv::Mat* image);
 
-
 cv::Point2f centroid(const cv::Moments& moments);
 
+void visualizeVector(const std::string& name,const std::vector<double>& vec);
+void visualizeVector(const std::string& name,const std::vector<float>& vec);
 } //namespace utility
 
 #endif /* UTILITY_H_ */

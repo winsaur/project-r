@@ -17,12 +17,16 @@
  */
 #include "Utility.h"
 
-#include <ros/ros.h>
 #include <cmath>
+#include <string>
+#include <sstream>
+
+#include <ros/ros.h>
 
 static const int kMaxCombineTimes(10);
 static const int NO_MEDIAN(-1);
 static const int kSymmetryTolerance(5); //TODO: make this set dynamically
+
 
 namespace utility {
 ColorPair GetColors(const Contour& contour,const cv::Mat& image) {
@@ -358,5 +362,46 @@ void removeSymmetricRegions(int symmetry_axis,cv::Mat* image) {
 
 cv::Point2f centroid(const cv::Moments& moments) {
 	return cv::Point2f( moments.m10/moments.m00 , moments.m01/moments.m00 );
+}
+
+void visualizeVector(const std::string& name,const std::vector<double>& vec) {
+	//find the max
+	double max = *std::max_element(vec.begin()+1,vec.end());
+	double min = *std::min_element(vec.begin()+1,vec.end());
+	//make a mat to display it
+	cv::Mat graph(100,vec.size(),CV_8UC1,cv::Scalar::all(0));
+	//plot the points
+	std::vector<double>::const_iterator it = vec.begin()+1;
+	int i=1;
+	while(it!=vec.end()) {
+		std::cout<<"plotting: "<<(*it-min)/(max-min)*100.<<std::endl;
+		cv::circle(graph,cv::Point(i,100-(*it-min)/(max-min)*100.),1,cv::Scalar(255),-1);
+		it++; i++;
+	}
+	//write the max on the mat
+	std::stringstream max_text;
+	max_text<<max;
+	cv::putText(graph,max_text.str(),cv::Point(0,10),CV_FONT_HERSHEY_SIMPLEX,0.5,cv::Scalar(128),1);
+	cv::imshow(name,graph);
+}
+void visualizeVector(const std::string& name,const std::vector<float>& vec) {
+	//find the max
+	double max = *std::max_element(vec.begin()+1,vec.end());
+	double min = *std::min_element(vec.begin()+1,vec.end());
+	//make a mat to display it
+	cv::Mat graph(100,vec.size(),CV_8UC1,cv::Scalar::all(0));
+	//plot the points
+	std::vector<float>::const_iterator it = vec.begin()+1;
+	int i=1;
+	while(it!=vec.end()) {
+		std::cout<<"plotting: "<<(*it-min)/(max-min)*100.<<std::endl;
+		cv::circle(graph,cv::Point(i,100-(*it-min)/(max-min)*100.),1,cv::Scalar(255),-1);
+		it++; i++;
+	}
+	//write the max on the mat
+	std::stringstream max_text;
+	max_text<<max;
+	cv::putText(graph,max_text.str(),cv::Point(0,10),CV_FONT_HERSHEY_SIMPLEX,0.5,cv::Scalar(128),1);
+	cv::imshow(name,graph);
 }
 }
