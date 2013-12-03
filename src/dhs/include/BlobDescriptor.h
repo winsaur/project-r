@@ -75,7 +75,7 @@ class BlobDescriptor {
 	cv::Rect getBound(int index) const;
 
 	Contour contour_;
-	private:
+	protected:
 	int id_;
 	std::vector<HistoryDescriptor> history_;
 	Kalman filter_;
@@ -83,8 +83,10 @@ class BlobDescriptor {
 	cv::Moments moments_;
 	cv::Point2f centroid_;
 	friend class BlobDescriptorFetcher;
-
+	friend class BlobDescriptorExtendedFetcher;
 };
+
+
 
 class BlobDescriptorFetcher {
 public:
@@ -98,5 +100,6 @@ private:
 	ros::NodeHandle handle_;
 	ros::Subscriber blob_subscriber_;
 };
+
 
 #endif /* BLOBDESCRIPTOR_H_ */

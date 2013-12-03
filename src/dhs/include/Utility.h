@@ -21,6 +21,7 @@
 #include <opencv2/opencv.hpp>
 #include "Types.h"
 
+#define ASYMMETRIC_COLOR 128
 
 namespace utility {
 ColorPair GetColors(const Contour& contour,const cv::Mat& image);
@@ -52,7 +53,10 @@ void getUpwardProjection(const cv::Mat& input,std::vector<int>* output);
 
 int getHorizontalMedian(const cv::Mat& input);
 
+void floodConcaveRegions(cv::Mat* image);
 void recolorNonSymmetricRegions(int symmetry_axis,cv::Mat* image);
+void removeSymmetricRegions(int symmetry_axis,cv::Mat* image);
+
 
 cv::Point2f centroid(const cv::Moments& moments);
 

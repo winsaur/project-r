@@ -20,9 +20,9 @@
 #include <ros/ros.h>
 #include <cmath>
 
-static const int kMaxCombineTimes = 10;
+static const int kMaxCombineTimes(10);
 static const int NO_MEDIAN(-1);
-static const int kSymmetryTolerance(0);
+static const int kSymmetryTolerance(5); //TODO: make this set dynamically
 
 namespace utility {
 ColorPair GetColors(const Contour& contour,const cv::Mat& image) {
@@ -112,7 +112,7 @@ cv::Point Center(const cv::Rect& bound) {
 	return cv::Point(bound.x+bound.width/2,bound.y+bound.height/2);
 }
 cv::Point BottomLeft(const cv::Rect& bound) {
-	assert(bound.width > 0 && bound.height > 0 && bound.x >= 0 && bound.y >= 0);
+	assert(bound.width > 0 && bound.height > 0);
 	return cv::Point(bound.x,bound.y+bound.height);
 }
 cv::Scalar At(const cv::Mat frame, const cv::Point location) {
@@ -156,10 +156,12 @@ bool changedMoreThanFactor(const cv::Rect& first, const cv::Rect& second, double
 	if(std::abs(first_aspect_ratio-second_aspect_ratio)/first_aspect_ratio > factor) return true;
 	if(std::abs(first_aspect_ratio-second_aspect_ratio)/second_aspect_ratio > factor) return true;
 
-	//check if height changed dramatically
+	//check if height or width changed dramatically
 	if(abs(first.height-second.height) > first.height) return true;
 	if(abs(first.height-second.height) > second.height) return true;
 
+	if(abs(first.width-second.width) > first.width) return true;
+	if(abs(first.width-second.width) > second.width) return true;
 
 
 	return false;
@@ -267,6 +269,38 @@ int getHorizontalMedian(const cv::Mat& input) {
 		return 0;
 	}
 }
+void floodConcaveRegions(cv::Mat* image) {
+	uchar* data = image->data;
+	for(int y=0;y<image->rows;y++) {
+		//find a nonblack pixel
+		int x=0;
+		for(;x<image->cols;x++) {
+			if(*data!=0) break;
+			data++;
+		}
+		if(x==image->cols) continue; //no nonblack pixels in this row
+		//find a black pixel
+		for(;x<image->cols;x++) {
+			if(*data==0) break;
+			data++;
+		}
+		if(x==image->cols) continue; //only one block of nonpixels in this row
+		while(x<image->cols) {
+			data++;
+			x++;
+			if(*data==0) continue;
+
+			//so there's another white pixel, fill in the gap
+			//guaranteed to find a white pixel because it was found earlier
+			//not multithread safe
+			uchar* data_reverse = data-1;
+			while(*data_reverse==0) {
+				*data_reverse = 255;
+				data_reverse--;
+			}
+		}
+	}
+}
 void recolorNonSymmetricRegions(int symmetry_axis,cv::Mat* image) {
 	//for each row in the image
 	 uchar* data = image->data;
@@ -277,22 +311,23 @@ void recolorNonSymmetricRegions(int symmetry_axis,cv::Mat* image) {
 		 int left_length,right_length;
 
 		 int j=0;
-		 //find first white pixel
-		 for(;j<image->cols && *data==0;j++) {
+		 //find first nonblack pixel
+		 for(;j < image->cols && *data==0;j++) {
 			 data++;
 		 }
 		 //nothing to be done here if we got to the right of the image
+		 //AKA there were no nonzero pixels in this row
 		 if(j==image->cols) continue;
 
 		 //calculate left_length
 		 left_length = symmetry_axis-j;
 		 //advance to axis
-		 for(;j<image->cols && j < symmetry_axis;j++) {
+		 for(;j < image->cols && j < symmetry_axis;j++) {
 			 data++;
 		 }
 
 		 //find last white pixel
-		 for(int j=0;j<image->cols;j++) {
+		 for(;j<image->cols;j++) {
 			 if(*data!=0) {
 				 right_length = j-symmetry_axis;
 			 }
@@ -306,12 +341,19 @@ void recolorNonSymmetricRegions(int symmetry_axis,cv::Mat* image) {
 			 if(*data!=0) {
 				 //if it is not within the min length+error reclassify it
 				 if(abs(j-symmetry_axis)-kSymmetryTolerance > min_length) {
-					 *data = 128;
+					 *data = ASYMMETRIC_COLOR;
 				 }
 			 }
 			 data++;
 		 }
 	 }
+}
+
+void removeSymmetricRegions(int symmetry_axis,cv::Mat* image) {
+	//get the recolored image
+	recolorNonSymmetricRegions(symmetry_axis,image);
+	//remove high values
+	cv::threshold(*image,*image,ASYMMETRIC_COLOR+1,0,cv::THRESH_TOZERO_INV);
 }
 
 cv::Point2f centroid(const cv::Moments& moments) {
